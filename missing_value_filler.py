@@ -20,6 +20,7 @@ class MissingValueFiller:
             )
         self.strategy = strategy
         self._fill_values = {}
+        self._dtypes = {}
 
     def fit(self, data: pd.DataFrame, columns: Optional[List[str]] = None) -> "MissingValueFiller":
         """
@@ -39,16 +40,25 @@ class MissingValueFiller:
             if col not in data.columns:
                 raise ValueError(f"列 {col} 不存在于数据中")
 
+            original_dtype = data[col].dtype
+            self._dtypes[col] = original_dtype
+
             if self.strategy == "mean":
-                self._fill_values[col] = data[col].mean()
+                fill_value = data[col].mean()
             elif self.strategy == "median":
-                self._fill_values[col] = data[col].median()
+                fill_value = data[col].median()
             elif self.strategy == "mode":
                 mode_result = data[col].mode()
                 if len(mode_result) > 0:
-                    self._fill_values[col] = mode_result.iloc[0]
+                    fill_value = mode_result.iloc[0]
                 else:
-                    self._fill_values[col] = np.nan
+                    fill_value = np.nan
+
+            if pd.api.types.is_integer_dtype(original_dtype):
+                if pd.notna(fill_value):
+                    fill_value = round(fill_value)
+
+            self._fill_values[col] = fill_value
 
         return self
 
@@ -69,6 +79,12 @@ class MissingValueFiller:
         for col, fill_value in self._fill_values.items():
             if col in result.columns:
                 result[col] = result[col].fillna(fill_value)
+                original_dtype = self._dtypes.get(col)
+                if original_dtype is not None and result[col].dtype != original_dtype:
+                    try:
+                        result[col] = result[col].astype(original_dtype)
+                    except (ValueError, TypeError):
+                        pass
 
         return result
 
